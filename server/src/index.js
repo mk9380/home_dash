@@ -3,7 +3,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') })
 
 const express = require('express')
 const cors = require('cors')
-const { db } = require('./db')
+const { getDb } = require('./db')
 const { accounts } = require('./db/schema')
 
 const transactionsRouter = require('./routes/transactions')
@@ -38,9 +38,10 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Accounts route (simple, inline)
+// Accounts route
 app.get('/api/accounts', async (req, res) => {
   try {
+    const { db } = await getDb()
     const result = await db.select().from(accounts)
     res.json(result)
   } catch (err) {
@@ -55,6 +56,12 @@ app.use('/api/tasks', tasksRouter)
 app.use('/api/meals', mealsRouter)
 app.use('/api/insights', insightsRouter)
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`)
+// Initialize database then start server
+getDb().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`)
+  })
+}).catch(err => {
+  console.error('Failed to initialize database:', err)
+  process.exit(1)
 })

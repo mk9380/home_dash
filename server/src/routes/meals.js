@@ -1,5 +1,5 @@
 const express = require('express')
-const { db } = require('../db')
+const { getDb, saveDb } = require('../db')
 const { mealPlans } = require('../db/schema')
 const { sql } = require('drizzle-orm')
 const { generateResponse } = require('../ai/provider')
@@ -30,7 +30,6 @@ Use the available ingredients when possible and add what's needed to the grocery
 
     const response = await generateResponse(systemPrompt, userPrompt)
 
-    // Try to parse JSON from the response
     const jsonMatch = response.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       return res.status(500).json({ error: 'Failed to parse AI response' })
@@ -46,12 +45,14 @@ Use the available ingredients when possible and add what's needed to the grocery
 // POST /api/meals/save — save meal plan
 router.post('/save', async (req, res) => {
   try {
+    const { db } = await getDb()
     const { week_start, meals, grocery_list } = req.body
     const result = await db.insert(mealPlans).values({
       week_start,
       meals: JSON.stringify(meals),
       grocery_list: JSON.stringify(grocery_list)
     }).returning()
+    saveDb()
     res.status(201).json(result[0])
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -61,6 +62,7 @@ router.post('/save', async (req, res) => {
 // GET /api/meals/current — most recent meal plan
 router.get('/current', async (req, res) => {
   try {
+    const { db } = await getDb()
     const result = await db.select()
       .from(mealPlans)
       .orderBy(sql`${mealPlans.created_at} DESC`)

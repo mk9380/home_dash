@@ -1,5 +1,5 @@
 const express = require('express')
-const { db } = require('../db')
+const { getDb, saveDb } = require('../db')
 const { tasks } = require('../db/schema')
 const { eq, sql } = require('drizzle-orm')
 
@@ -8,6 +8,7 @@ const router = express.Router()
 // GET /api/tasks — list all, filter by status
 router.get('/', async (req, res) => {
   try {
+    const { db } = await getDb()
     const { status } = req.query
     let query = db.select().from(tasks)
     if (status) {
@@ -24,10 +25,12 @@ router.get('/', async (req, res) => {
 // POST /api/tasks — create
 router.post('/', async (req, res) => {
   try {
+    const { db } = await getDb()
     const { title, description, assigned_to, due_date } = req.body
     const result = await db.insert(tasks).values({
       title, description, assigned_to, due_date
     }).returning()
+    saveDb()
     res.status(201).json(result[0])
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -37,6 +40,7 @@ router.post('/', async (req, res) => {
 // PUT /api/tasks/:id — update including status
 router.put('/:id', async (req, res) => {
   try {
+    const { db } = await getDb()
     const { title, description, assigned_to, status, due_date } = req.body
     const updates = {}
     if (title !== undefined) updates.title = title
@@ -52,6 +56,7 @@ router.put('/:id', async (req, res) => {
     if (result.length === 0) {
       return res.status(404).json({ error: 'Task not found' })
     }
+    saveDb()
     res.json(result[0])
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -61,12 +66,14 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/tasks/:id — delete
 router.delete('/:id', async (req, res) => {
   try {
+    const { db } = await getDb()
     const result = await db.delete(tasks)
       .where(eq(tasks.id, parseInt(req.params.id)))
       .returning()
     if (result.length === 0) {
       return res.status(404).json({ error: 'Task not found' })
     }
+    saveDb()
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })

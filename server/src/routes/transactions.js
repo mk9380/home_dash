@@ -1,5 +1,5 @@
 const express = require('express')
-const { db } = require('../db')
+const { getDb, saveDb } = require('../db')
 const { transactions, categories } = require('../db/schema')
 const { eq, and, like, sql } = require('drizzle-orm')
 
@@ -8,6 +8,7 @@ const router = express.Router()
 // GET /api/transactions — list all, filter by month, category_id, type
 router.get('/', async (req, res) => {
   try {
+    const { db } = await getDb()
     const { month, category_id, type } = req.query
     const conditions = []
 
@@ -37,10 +38,12 @@ router.get('/', async (req, res) => {
 // POST /api/transactions — create
 router.post('/', async (req, res) => {
   try {
+    const { db } = await getDb()
     const { account_id, category_id, amount, type, description, date } = req.body
     const result = await db.insert(transactions).values({
       account_id, category_id, amount, type, description, date
     }).returning()
+    saveDb()
     res.status(201).json(result[0])
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -50,6 +53,7 @@ router.post('/', async (req, res) => {
 // PUT /api/transactions/:id — update
 router.put('/:id', async (req, res) => {
   try {
+    const { db } = await getDb()
     const { account_id, category_id, amount, type, description, date } = req.body
     const result = await db.update(transactions)
       .set({ account_id, category_id, amount, type, description, date })
@@ -58,6 +62,7 @@ router.put('/:id', async (req, res) => {
     if (result.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' })
     }
+    saveDb()
     res.json(result[0])
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -67,12 +72,14 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/transactions/:id — delete
 router.delete('/:id', async (req, res) => {
   try {
+    const { db } = await getDb()
     const result = await db.delete(transactions)
       .where(eq(transactions.id, parseInt(req.params.id)))
       .returning()
     if (result.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' })
     }
+    saveDb()
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -82,14 +89,13 @@ router.delete('/:id', async (req, res) => {
 // GET /api/summary?month=YYYY-MM — financial summary
 router.get('/summary', async (req, res) => {
   try {
+    const { db } = await getDb()
     const month = req.query.month || new Date().toISOString().slice(0, 7)
 
-    // Get all transactions for the month
     const monthTransactions = await db.select()
       .from(transactions)
       .where(like(transactions.date, `${month}%`))
 
-    // Get all categories for lookup
     const allCategories = await db.select().from(categories)
     const categoryMap = Object.fromEntries(allCategories.map(c => [c.id, c]))
 
@@ -104,7 +110,6 @@ router.get('/summary', async (req, res) => {
       } else {
         total_expenses += t.amount
 
-        // Aggregate by category
         const catId = t.category_id
         if (catId) {
           if (!byCategoryMap[catId]) {
@@ -119,7 +124,6 @@ router.get('/summary', async (req, res) => {
           byCategoryMap[catId].amount += t.amount
         }
 
-        // Aggregate by day
         if (!byDayMap[t.date]) {
           byDayMap[t.date] = { date: t.date, amount: 0 }
         }
@@ -127,14 +131,12 @@ router.get('/summary', async (req, res) => {
       }
     }
 
-    // Calculate percentages
     const by_category = Object.values(byCategoryMap).map(c => ({
       ...c,
       amount: Math.round(c.amount * 100) / 100,
       pct: total_expenses > 0 ? Math.round((c.amount / total_expenses) * 1000) / 10 : 0
     }))
 
-    // Sort days
     const by_day = Object.values(byDayMap).sort((a, b) => a.date.localeCompare(b.date))
 
     res.json({
