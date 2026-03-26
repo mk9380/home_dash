@@ -1,10 +1,21 @@
 const path = require('path')
+const fs = require('fs')
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env') })
 
-const { getDb, saveDb } = require('./index')
+const initSqlJs = require('sql.js')
+
+const dbPath = path.join(__dirname, '..', '..', 'dashboard.sqlite')
 
 async function seed() {
-  const { sqlite } = await getDb()
+  const SQL = await initSqlJs()
+  let sqlite
+
+  if (fs.existsSync(dbPath)) {
+    const fileBuffer = fs.readFileSync(dbPath)
+    sqlite = new SQL.Database(fileBuffer)
+  } else {
+    sqlite = new SQL.Database()
+  }
 
   // Create tables
   sqlite.run(`
@@ -82,13 +93,16 @@ async function seed() {
     sqlite.run('INSERT OR IGNORE INTO categories (id, name, type, color) VALUES (?, ?, ?, ?)', [id, name, type, color])
   }
 
-  saveDb()
+  // Save to disk
+  const data = sqlite.export()
+  const buffer = Buffer.from(data)
+  fs.writeFileSync(dbPath, buffer)
+
+  sqlite.close()
 
   console.log('Database seeded successfully!')
   console.log('  - 2 accounts created')
   console.log(`  - ${allCategories.length} categories created`)
-
-  process.exit(0)
 }
 
 seed().catch(err => {
