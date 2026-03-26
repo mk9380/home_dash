@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Workiva Valuation Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#111;overflow:hidden}</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
+<script crossorigin src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body><div id="root"></div>
+<script type="text/babel" data-type="module">
+const{useState,useMemo,useCallback,useRef}=React;
+const{LineChart,Line,BarChart,Bar,XAxis,YAxis,CartesianGrid,Tooltip,Legend,ResponsiveContainer,ScatterChart,Scatter,Cell,LabelList}=Recharts;
+const C={bg:"#111",surface:"#1a1a1a",surface2:"#222",card:"#1e1e1e",border:"#333",blue:"#0078FF",blueLight:"#3399FF",green:"#00C853",greenLight:"#4ADE80",red:"#FF5252",orange:"#FFB300",purple:"#B388FF",text:"#FFF",textSec:"#B0B0B0",textDim:"#707070",
+  cText:"#222",cTextSec:"#666",cBorder:"#e0e0e0",cBg:"#fff"};
+const ff="'Inter',sans-serif";
+function bgs(m,s,e,y){var r=[];for(var i=0;i<y;i++){var t=y<=1?1:i/(y-1);var rate;if(m==="linear")rate=s+(e-s)*t;else if(m==="accelerating")rate=s+(e-s)*Math.pow(t,2);else if(m==="decaying")rate=s+(e-s)*(1-Math.pow(1-t,2));else{var k=8,sg=1/(1+Math.exp(-k*(t-.5))),s0=1/(1+Math.exp(-k*(-.5))),s1=1/(1+Math.exp(-k*(.5)));rate=s+(e-s)*(sg-s0)/(s1-s0);}r.push(rate/100);}return r;}
+function pRev(b,rates){var r=[b];for(var i=0;i<rates.length;i++)r.push(r[r.length-1]*(1+rates[i]));return r;}
+function pFCF(revs,mg){return revs.map(function(r,i){return r*(mg[Math.min(i,mg.length-1)]||mg[mg.length-1]);});}
+function cDCF(fcfs,w,tg){if(w/100<=tg/100)return{pvFCF:0,pvTerminal:0,discountedFCFs:fcfs.slice(1).map(function(){return 0;}),enterpriseValue:0};var d=fcfs.slice(1).map(function(f,i){return f/Math.pow(1+w/100,i+1);});var tvF=fcfs[fcfs.length-1]*(1+tg/100);var tv=tvF/(w/100-tg/100);var pvTV=tv/Math.pow(1+w/100,fcfs.length-1);var pvFCF=d.reduce(function(a,b){return a+b;},0);return{pvFCF:pvFCF,pvTerminal:pvTV,discountedFCFs:d,enterpriseValue:pvFCF+pvTV};}
+var fmt=function(n,d){d=d==null?1:d;if(n==null||isNaN(n))return"\u2014";if(Math.abs(n)>=1e9)return"$"+(n/1e9).toFixed(d)+"B";if(Math.abs(n)>=1e6)return"$"+(n/1e6).toFixed(d)+"M";return"$"+n.toFixed(d);};
+var fmtB=function(n){if(n==null||isNaN(n))return"";if(Math.abs(n)>=1e3)return"$"+(n/1e3).toFixed(1)+"B";return"$"+n.toFixed(0)+"M";};
+var fmtX=function(n){if(n==null||isNaN(n)||!isFinite(n))return"\u2014";return n.toFixed(1)+"x";};
+var fmtNum=function(n,d){d=d==null?1:d;return(n==null||isNaN(n))?"\u2014":n.toFixed(d);};
+var inputStyle={background:C.bg,border:"1px solid "+C.border,color:C.text,borderRadius:8,padding:"7px 11px",width:"100%",fontSize:13,outline:"none",fontFamily:ff,fontWeight:500};
+var selectStyle={...inputStyle,cursor:"pointer"};
+var labelStyle={color:C.textSec,fontSize:11,fontFamily:ff,fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:4,display:"block"};
+var PRESETS={bear:{label:"Bear",color:C.red,revGrowthStart:17,revGrowthEnd:0,fcfMarginStart:16,fcfMarginEnd:16,wacc:10,terminalGrowth:-2},base:{label:"Base",color:C.blue,revGrowthStart:18,revGrowthEnd:10,fcfMarginStart:19,fcfMarginEnd:30,wacc:9,terminalGrowth:1},bull:{label:"Bull",color:C.green,revGrowthStart:19,revGrowthEnd:10,fcfMarginStart:20,fcfMarginEnd:35,wacc:9,terminalGrowth:2}};
+var DEFAULT_COMPS=[{name:"OneStream Inc",selected:true,sharePrice:22.74,sharesM:257,ev:5200,revLatest:586,revNtm:702,ebitdaPctLatest:null,ebitdaPctNtm:null},{name:"Blackline",selected:true,sharePrice:53.58,sharesM:74,ev:4097,revLatest:700,revNtm:751,ebitdaPctLatest:28.3,ebitdaPctNtm:24.3},{name:"Asana Inc",selected:true,sharePrice:13.32,sharesM:259,ev:3012,revLatest:787,revNtm:855,ebitdaPctLatest:null,ebitdaPctNtm:null},{name:"Freshworks Inc",selected:true,sharePrice:11.19,sharesM:317,ev:2732,revLatest:826,revNtm:947,ebitdaPctLatest:null,ebitdaPctNtm:null},{name:"SentinelOne Inc",selected:true,sharePrice:16.92,sharesM:365,ev:5026,revLatest:1000,revNtm:1217,ebitdaPctLatest:null,ebitdaPctNtm:null},{name:"Qualys",selected:false,sharePrice:149.73,sharesM:38,ev:5010,revLatest:656,revNtm:708,ebitdaPctLatest:18.0,ebitdaPctNtm:14.1},{name:"Bill.com Holdings",selected:false,sharePrice:45.59,sharesM:117,ev:4834,revLatest:1527,revNtm:1680,ebitdaPctLatest:null,ebitdaPctNtm:null},{name:"ZoomInfo Technologies Inc",selected:false,sharePrice:10.575,sharesM:336,ev:4753,revLatest:1220,revNtm:1226,ebitdaPctLatest:null,ebitdaPctNtm:null},{name:"RingCentral",selected:false,sharePrice:26.93,sharesM:102,ev:3850,revLatest:2504,revNtm:2611,ebitdaPctLatest:34.2,ebitdaPctNtm:32.6},{name:"Varonis",selected:false,sharePrice:34.14,sharesM:130,ev:3724,revLatest:618,revNtm:694,ebitdaPctLatest:8.6,ebitdaPctNtm:4.1},{name:"Kinaxis Inc",selected:false,sharePrice:126.53,sharesM:29,ev:3396,revLatest:545,revNtm:614,ebitdaPctLatest:19.9,ebitdaPctNtm:22.0},{name:"Vertex Inc",selected:false,sharePrice:19.51,sharesM:171,ev:3356,revLatest:748,revNtm:839,ebitdaPctLatest:null,ebitdaPctNtm:null},{name:"Appian Corp",selected:false,sharePrice:40.29,sharesM:75,ev:3098,revLatest:697,revNtm:787,ebitdaPctLatest:21.4,ebitdaPctNtm:15.9},{name:"Braze Inc",selected:false,sharePrice:27.99,sharesM:112,ev:2860,revLatest:708,revNtm:860,ebitdaPctLatest:null,ebitdaPctNtm:null}];
+
+function SL(p){if(p.value==null||isNaN(p.value))return null;return <text x={p.x} y={p.y-8} fill={p.fill||"#999"} fontSize={9} fontFamily={ff} fontWeight={600} textAnchor="middle">{fmtB(p.value)}</text>;}
+function SLP(p){if(p.value==null||isNaN(p.value))return null;return <text x={p.x} y={p.y-8} fill={p.fill||"#999"} fontSize={9} fontFamily={ff} fontWeight={600} textAnchor="middle">{(typeof p.value==="number"?p.value:0).toFixed(1)}</text>;}
+function BIL(p){if(p.value==null||isNaN(p.value)||p.height<16)return null;return <text x={p.x+p.width/2} y={p.y+14} fill="rgba(255,255,255,0.85)" fontSize={9} fontFamily={ff} fontWeight={700} textAnchor="middle">{Math.round(p.value)}</text>;}
+function EVL(p){if(p.value==null||isNaN(p.value))return null;return <text x={p.x} y={p.y-8} fill={p.fill||"#999"} fontSize={8} fontFamily={ff} fontWeight={600} textAnchor="middle">{fmtB(p.value)}</text>;}
+
+function Slider({label,value,min,max,step,onChange,unit}){step=step||0.5;unit=unit||"%";return(<div style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={{...labelStyle,marginBottom:0}}>{label}</span><span style={{color:C.blue,fontSize:13,fontFamily:ff,fontWeight:700}}>{value}{unit}</span></div><input type="range" min={min} max={max} step={step} value={value} onChange={function(e){onChange(Number(e.target.value));}} style={{width:"100%",accentColor:C.blue,height:4,cursor:"pointer"}}/><div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.textDim,fontSize:10}}>{min}{unit}</span><span style={{color:C.textDim,fontSize:10}}>{max}{unit}</span></div></div>);}
+function Field({label,value,onChange,type,min,max,step}){type=type||"number";return(<div style={{marginBottom:12}}><label style={labelStyle}>{label}</label><input type={type} value={value} min={min} max={max} step={step} onChange={function(e){onChange(type==="number"?Number(e.target.value):e.target.value);}} style={inputStyle}/></div>);}
+function MRow(p){return <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{color:C.textSec,fontSize:10,fontWeight:500}}>{p.l}</span><span style={{color:p.c||C.text,fontSize:10,fontWeight:600}}>{p.v}</span></div>;}
+function downloadCSV(cd,res,as){var h=["Year","Revenue","Growth%","Margin%","FCF","DiscFCF"];var rows=[h.join(",")];cd.forEach(function(d,i){rows.push([d.year,(res.revenues[i]/1e6).toFixed(1),i===0?"":d[as+"_growth"],d[as+"_margin"],(res.fcfs[i]/1e6).toFixed(1),i===0?"":(res.discountedFCFs[i-1]/1e6).toFixed(1)].join(","));});var b=new Blob([rows.join("\n")],{type:"text/csv"});var u=URL.createObjectURL(b);var a=document.createElement("a");a.href=u;a.download="dcf_detail.csv";a.click();URL.revokeObjectURL(u);}
+
+// Section heading: dark grey default for light bg, colored for scenario-specific
+function SH(text,color,light){var defaultColor=light?"#444":"#e0e0e0";var c=color||defaultColor;var borderC=color||(light?"#bbb":"#333");return <div style={{color:c,fontSize:12,fontFamily:ff,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:12,paddingBottom:8,borderBottom:"2px solid "+borderC+"66"}}>{text}</div>;}
+// Chart card with 25% transparent white background
+var chartCard={background:"#fff",border:"1px solid #555",borderRadius:12,padding:16};
+var darkCard={background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:16};
+var cTick={fill:"#666",fontSize:9,fontFamily:ff,fontWeight:500};
+var cTT={background:"#fff",border:"1px solid #ddd",fontFamily:ff,fontSize:11,color:"#333"};
+
+function App(){
+  var[tab,setTab]=useState("home");
+  var[activeSc,setActiveSc]=useState("base");
+  var[coName,setCoName]=useState("Workiva");
+  var[baseRev,setBaseRev]=useState(885);
+  var[netCashAdj,setNetCashAdj]=useState(100);
+  var[shares,setShares]=useState(58.3);
+  var[projYrs,setProjYrs]=useState(10);
+  var[baseYear,setBaseYear]=useState(2026);
+  var[curPrice,setCurPrice]=useState(60);
+  var[scenarios,setScenarios]=useState({bear:{...PRESETS.bear,revMode:"decaying",fcfMode:"linear"},base:{...PRESETS.base,revMode:"decaying",fcfMode:"decaying"},bull:{...PRESETS.bull,revMode:"accelerating",fcfMode:"decaying"}});
+  var upSc=useCallback(function(k,f,v){setScenarios(function(p){var o={};o[k]={...p[k]};o[k][f]=v;return{...p,...o};});},[]);
+  var[comps,setComps]=useState(DEFAULT_COMPS);
+  var[sensW,setSensW]=useState([7,7.5,8,8.5,9,9.5,10,10.5,11,11.5,12,13,14,15]);
+  var[sensT,setSensT]=useState([-4,-3,-2,-1,0,0.5,1,1.5,2,2.5,3,3.5,4,5]);
+  var[exporting,setExporting]=useState(false);
+  var curEqValue=curPrice*shares*1e6;var curEV=curEqValue-netCashAdj*1e6;
+
+  var dcfR=useMemo(function(){var out={};Object.entries(scenarios).forEach(function(pair){var key=pair[0],sc=pair[1];var rg=bgs(sc.revMode,sc.revGrowthStart,sc.revGrowthEnd,projYrs);var fm=bgs(sc.fcfMode,sc.fcfMarginStart,sc.fcfMarginEnd,projYrs+1);var revs=pRev(baseRev*1e6,rg);var fcfs=pFCF(revs,fm);var r=cDCF(fcfs,sc.wacc,sc.terminalGrowth);var eq=r.enterpriseValue+netCashAdj*1e6;var pps=eq/(shares*1e6);var avgM=fm.reduce(function(a,b){return a+b;},0)/fm.length*100;var cagr=(Math.pow(revs[revs.length-1]/revs[0],1/projYrs)-1)*100;var tvP=r.enterpriseValue>0?(r.pvTerminal/r.enterpriseValue*100):0;var ntmR=revs[1];var ntmF=fcfs[1];var ntmG=rg[0]*100;var evRN=r.enterpriseValue/ntmR;var evFN=ntmF>0?r.enterpriseValue/ntmF:null;out[key]={revenues:revs,fcfs:fcfs,revGrowthRates:rg,fcfMarginRates:fm,pvFCF:r.pvFCF,pvTerminal:r.pvTerminal,discountedFCFs:r.discountedFCFs,enterpriseValue:r.enterpriseValue,equityValue:eq,pricePerShare:pps,avgMargin:avgM,cagr:cagr,tvPct:tvP,ntmRev:ntmR,ntmFCF:ntmF,evRevNtm:evRN,evFcfNtm:evFN,rule40:ntmG+(fm[1]*100),ntmGrowth:ntmG};});return out;},[scenarios,baseRev,netCashAdj,shares,projYrs]);
+
+  var baseRes=dcfR.base;var curEvRevNtm=baseRes?curEV/baseRes.ntmRev:null;var curEvFcfNtm=(baseRes&&baseRes.ntmFCF>0)?curEV/baseRes.ntmFCF:null;
+  var yearLabels=useMemo(function(){return[String(baseYear)].concat(Array.from({length:projYrs},function(_,i){return String(baseYear+i+1);}));},[baseYear,projYrs]);
+  var chartData=useMemo(function(){return yearLabels.map(function(yr,i){var row={year:yr};Object.entries(dcfR).forEach(function(p){var k=p[0],r=p[1];row[k+"_rev"]=+(r.revenues[i]/1e6).toFixed(1);row[k+"_fcf"]=+(r.fcfs[i]/1e6).toFixed(1);row[k+"_margin"]=+(r.fcfMarginRates[i]*100).toFixed(1);row[k+"_growth"]=i>0?+(r.revGrowthRates[i-1]*100).toFixed(1):null;});return row;});},[dcfR,yearLabels]);
+  var selComps=comps.filter(function(c){return c.selected;});
+  var compsA=useMemo(function(){if(!selComps.length)return null;var evR=selComps.map(function(c){return c.ev/c.revNtm;});var rG=selComps.map(function(c){return(c.revNtm-c.revLatest)/c.revLatest*100;});var sort=function(a){return[].concat(a).sort(function(x,y){return x-y;});};var med=function(a){var s=sort(a),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;};var avg=function(a){return a.reduce(function(x,y){return x+y;},0)/a.length;};var p25=function(a){var s=sort(a);return s[Math.floor(s.length*0.25)];};var p75=function(a){var s=sort(a);return s[Math.floor(s.length*0.75)];};return{evRevStats:{mean:avg(evR),median:med(evR),p25:p25(evR),p75:p75(evR)},revGrowthStats:{mean:avg(rG),median:med(rG)}};},[selComps]);
+  function buildSens(scKey){var sc=scenarios[scKey];return sensW.map(function(w){return{wacc:w,values:sensT.map(function(tg){var rr=bgs(sc.revMode,sc.revGrowthStart,sc.revGrowthEnd,projYrs);var fr=bgs(sc.fcfMode,sc.fcfMarginStart,sc.fcfMarginEnd,projYrs+1);var revs=pRev(baseRev*1e6,rr);var fcfs=pFCF(revs,fr);var r=cDCF(fcfs,w,tg);return(r.enterpriseValue+netCashAdj*1e6)/(shares*1e6);})};});}
+  var sensAll=useMemo(function(){return{bear:buildSens("bear"),base:buildSens("base"),bull:buildSens("bull")};},[scenarios,sensW,sensT,projYrs,baseRev,netCashAdj,shares]);
+  var football=useMemo(function(){var rows=Object.entries(dcfR).map(function(p){var k=p[0],r=p[1],pp=r.pricePerShare;return{method:"DCF - "+PRESETS[k].label,low:pp*0.9,mid:pp,high:pp*1.1,color:PRESETS[k].color};});if(compsA){var ntmR=baseRes.ntmRev;var rL=compsA.evRevStats.p25*ntmR;var rH=compsA.evRevStats.p75*ntmR;var rLps=(rL+netCashAdj*1e6)/(shares*1e6);var rHps=(rH+netCashAdj*1e6)/(shares*1e6);rows.push({method:"Comps (25th-75th)",low:Math.min(rLps,rHps),mid:(rLps+rHps)/2,high:Math.max(rLps,rHps),color:C.purple});var mL=compsA.evRevStats.mean;var mM=compsA.evRevStats.median;var mLps=(mL*ntmR+netCashAdj*1e6)/(shares*1e6);var mMps=(mM*ntmR+netCashAdj*1e6)/(shares*1e6);rows.push({method:"Comps (Mean/Med)",low:Math.min(mLps,mMps),mid:(mLps+mMps)/2,high:Math.max(mLps,mMps),color:C.orange});}return rows;},[dcfR,compsA,netCashAdj,shares,baseRes]);
+  var sc=scenarios[activeSc];var res=dcfR[activeSc];
+
+  async function exportAllPDF(){setExporting(true);var tabs=["dcf","comps","sensitivity","summary"];var origTab=tab;var pdf=new jspdf.jsPDF({orientation:"l",unit:"px",format:[1200,800]});for(var i=0;i<tabs.length;i++){setTab(tabs[i]);await new Promise(function(r){setTimeout(r,700);});var el=document.getElementById("main-content");if(!el)continue;var oH=el.style.height;var oO=el.style.overflow;el.style.height="auto";el.style.overflow="visible";try{var canvas=await html2canvas(el,{backgroundColor:"#111",scale:1.5,useCORS:true,logging:false,windowWidth:el.scrollWidth,windowHeight:el.scrollHeight});if(i>0)pdf.addPage([1200,800],"l");pdf.addImage(canvas.toDataURL("image/png"),"PNG",0,0,1200,Math.min(canvas.height/(canvas.width/1200),800));}catch(e){}el.style.height=oH;el.style.overflow=oO;}pdf.save("workiva_valuation.pdf");setTab(origTab);setExporting(false);}
+
+  function NavLink({label,onClick,active}){return <button onClick={onClick} style={{background:"none",border:"none",color:active?C.blue:C.textDim,fontFamily:ff,fontSize:12,fontWeight:active?700:600,letterSpacing:"0.06em",textTransform:"uppercase",padding:"10px 20px",borderBottom:active?"3px solid "+C.blue:"3px solid transparent",cursor:"pointer",transition:"all 0.2s"}}>{label}</button>;}
+
+  var allTabs=["home","dcf","comps","sensitivity","summary","notes"];
+  var tabLabels={home:"Home",dcf:"DCF Model",comps:"Comparables",sensitivity:"Sensitivity",summary:"Summary",notes:"Notes"};
+
+  return(
+    <div style={{background:C.bg,minHeight:"100vh",fontFamily:ff,color:C.text}}>
+      <style>{`
+        input[type=range]{-webkit-appearance:none;appearance:none;background:${C.border};height:4px;border-radius:2px}
+        input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:${C.blue};cursor:pointer}
+        input[type=checkbox]{accent-color:${C.blue}}
+        ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:${C.bg}}::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
+        .sc-btn{background:none;border:2px solid ${C.border};cursor:pointer;font-family:${ff};font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:6px 16px;border-radius:6px;transition:all 0.15s}
+        table{border-collapse:collapse;width:100%}
+        th{color:${C.textSec};font-size:10px;font-family:${ff};font-weight:600;letter-spacing:0.06em;text-transform:uppercase;padding:8px;text-align:right;border-bottom:2px solid ${C.border}}
+        th:first-child{text-align:left}
+        td{color:${C.text};font-size:11px;font-family:${ff};font-weight:500;padding:7px 8px;text-align:right;border-bottom:1px solid ${C.border}22}
+        td:first-child{text-align:left;color:${C.textSec}}
+        tr:hover td{background:${C.surface2}}
+        .ci{background:${C.bg};border:1px solid ${C.border};color:${C.text};border-radius:6px;padding:4px 7px;width:100%;font-size:11px;outline:none;font-family:${ff};font-weight:500;text-align:right}
+      `}</style>
+
+      {/* HEADER */}
+      <div style={{background:"linear-gradient(135deg,#1a1a1a,#222)",borderBottom:"1px solid #333",padding:"0 28px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:26,height:26,borderRadius:6,background:"linear-gradient(135deg,"+C.blue+",#00AAFF)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontSize:13,fontWeight:900}}>W</span></div><span style={{color:"#ccc",fontSize:10,fontWeight:700,letterSpacing:"0.15em",textTransform:"uppercase"}}>Valuation Engine</span></div>
+            <input value={coName} onChange={function(e){setCoName(e.target.value);}} style={{background:"none",border:"none",color:C.text,fontSize:20,fontWeight:800,outline:"none",width:180,fontFamily:ff}}/>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {(tab!=="home"&&tab!=="notes")&&<button onClick={exportAllPDF} disabled={exporting} style={{background:C.blue,border:"none",color:"#fff",borderRadius:6,padding:"7px 16px",cursor:"pointer",fontFamily:ff,fontSize:11,fontWeight:700,opacity:exporting?0.5:1}}>{exporting?"Exporting...":"Export PDF"}</button>}
+            {(tab!=="home"&&tab!=="notes")&&Object.entries(PRESETS).map(function(p){var k=p[0],pr=p[1];return <button key={k} className="sc-btn" style={{borderColor:activeSc===k?pr.color:C.border,color:activeSc===k?pr.color:C.textDim,background:activeSc===k?pr.color+"15":"none"}} onClick={function(){setActiveSc(k);}}>{pr.label}</button>;})}
+          </div>
+        </div>
+        <div style={{display:"flex"}}>{allTabs.map(function(t){return <NavLink key={t} label={tabLabels[t]} onClick={function(){setTab(t);}} active={tab===t}/>;})}</div>
+      </div>
+
+      {/* HOME PAGE */}
+      {tab==="home"&&(
+        <div style={{height:"calc(100vh - 118px)",overflow:"auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",background:"linear-gradient(160deg,#1a1a1a 0%,#111 40%,#0a0a0a 100%)",position:"relative"}}>
+          <div style={{position:"absolute",top:-80,right:-80,width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle at 30% 40%,"+C.blue+"44,transparent 70%)",pointerEvents:"none"}}/>
+          <div style={{position:"absolute",top:60,right:120,width:16,height:16,borderRadius:4,background:C.blue,transform:"rotate(15deg)",opacity:0.6}}/>
+          <div style={{position:"absolute",top:40,right:160,width:10,height:10,borderRadius:3,background:C.blue,transform:"rotate(25deg)",opacity:0.4}}/>
+          <div style={{position:"absolute",top:100,right:80,width:22,height:22,borderRadius:5,background:C.blue,opacity:0.5}}/>
+
+          <div style={{marginTop:60,marginBottom:30,textAlign:"left",maxWidth:800,width:"100%",padding:"0 40px",position:"relative",zIndex:1}}>
+            <div style={{color:"#999",fontSize:11,fontWeight:600,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:16}}>workiva</div>
+            <h1 style={{fontSize:52,fontWeight:900,lineHeight:1.1,color:"#fff",marginBottom:12}}>Valuation<br/>Engine</h1>
+            <p style={{color:"#888",fontSize:14,fontWeight:400,marginBottom:40}}>Interactive DCF, Comparables, Sensitivity Analysis & Valuation Summary</p>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,maxWidth:800,width:"100%",padding:"0 40px",position:"relative",zIndex:1}}>
+            {[
+              {t:"DCF Model",tab:"dcf",desc:"Multi-scenario discounted cash flow with revenue projections, FCF margins, and terminal value analysis.",ic:"\u2192"},
+              {t:"Comparables",tab:"comps",desc:"Peer company EV/Revenue benchmarking with implied valuation ranges and scatter analysis.",ic:"\u2192"},
+              {t:"Sensitivity",tab:"sensitivity",desc:"WACC and terminal growth rate sensitivity tables with percentage-vs-current breakdowns.",ic:"\u2192"},
+              {t:"Summary",tab:"summary",desc:"Football field visualization combining DCF and comps implied share price ranges.",ic:"\u2192"},
+              {t:"Notes",tab:"notes",desc:"Methodology documentation, key assumptions, and detailed model explanation.",ic:"\u2192"},
+            ].map(function(item,i){return(
+              <div key={i} onClick={function(){setTab(item.tab);}} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:20,cursor:"pointer",transition:"all 0.2s",borderTop:"3px solid "+C.blue+"44"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{color:"#e0e0e0",fontSize:13,fontWeight:700}}>{item.t}</span><span style={{color:C.blue,fontSize:16}}>{item.ic}</span></div>
+                <p style={{color:"#888",fontSize:11,lineHeight:1.5,fontWeight:400}}>{item.desc}</p>
+              </div>
+            );})}
+          </div>
+        </div>
+      )}
+
+      {/* NOTES PAGE */}
+      {tab==="notes"&&(
+        <div style={{height:"calc(100vh - 118px)",overflow:"auto",padding:"30px 40px",maxWidth:900,margin:"0 auto"}}>
+          <h2 style={{color:"#e0e0e0",fontSize:28,fontWeight:800,marginBottom:8}}>Documentation & Methodology</h2>
+          <p style={{color:"#888",fontSize:13,marginBottom:30}}>This dashboard provides an interactive framework for estimating intrinsic value using multiple methodologies.</p>
+
+          <div style={{marginBottom:30}}><h3 style={{color:"#ccc",fontSize:14,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.06em"}}>Page Guide</h3>
+            {[
+              {t:"DCF Model",tab:"dcf",d:"Projects revenue and free cash flow across Bear, Base, and Bull scenarios using configurable growth curves (linear, decaying, accelerating, S-curve). Calculates enterprise value via present value of projected FCFs plus terminal value, then derives implied share price."},
+              {t:"Comparables",tab:"comps",d:"Benchmarks against selected peer companies using EV/NTM Revenue multiples. Shows statistical summary (mean, median, percentiles), implied valuations, and a regression scatter of EV/Rev vs. revenue growth."},
+              {t:"Sensitivity Analysis",tab:"sensitivity",d:"Two-dimensional sensitivity tables showing implied share price across WACC and terminal growth rate combinations for all three scenarios. Includes both absolute price and percentage-vs-current views."},
+              {t:"Summary",tab:"summary",d:"Football field chart combining DCF scenario ranges with comparable company implied ranges for a consolidated view of the valuation range."},
+            ].map(function(item,i){return(
+              <div key={i} onClick={function(){setTab(item.tab);}} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:16,marginBottom:10,cursor:"pointer",borderLeft:"3px solid "+C.blue}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{color:"#ddd",fontSize:13,fontWeight:700}}>{item.t}</span><span style={{color:C.blue,fontSize:12}}>Open \u2192</span></div>
+                <p style={{color:"#888",fontSize:11,lineHeight:1.6,marginTop:6}}>{item.d}</p>
+              </div>
+            );})}
+          </div>
+
+          <div style={{marginBottom:30}}><h3 style={{color:"#ccc",fontSize:14,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.06em"}}>DCF Methodology</h3>
+            <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:20}}>
+              {[
+                {h:"Revenue Projection",b:"Base year revenue is grown using configurable curves. Four modes are available: Linear (constant interpolation from start to end rate), Decaying/Concave (rapid early deceleration), Accelerating/Convex (slow start, fast finish), and S-Curve (logistic transition). Each year's growth rate is applied sequentially to produce the revenue trajectory."},
+                {h:"Free Cash Flow",b:"FCF is derived by applying a margin trajectory to projected revenue. The margin curve uses the same four modes as revenue growth. FCF = Revenue \u00d7 FCF Margin Rate for each projection year."},
+                {h:"Terminal Value",b:"Calculated using the Gordon Growth Model: TV = FCF(final year) \u00d7 (1 + g) / (WACC - g), where g is the terminal growth rate. The terminal value is discounted back to present at the WACC rate."},
+                {h:"Enterprise & Equity Value",b:"Enterprise Value = PV of projected FCFs + PV of Terminal Value. Equity Value = Enterprise Value + Net Cash Adjustment (positive for net cash, negative for net debt). Share Price = Equity Value / Shares Outstanding."},
+                {h:"Comparables Method",b:"Selected peer companies provide EV/NTM Revenue multiples. Statistical measures (mean, median, 25th/75th percentiles) are applied to the subject company's NTM revenue to derive implied EV, then converted to per-share values using the same equity bridge."},
+                {h:"Sensitivity Analysis",b:"The model recalculates implied share price for each combination of WACC and terminal growth rate in the selected ranges, holding all other scenario assumptions constant. Results are presented as both absolute prices and percentage deviations from the current market price."},
+              ].map(function(item,i){return(
+                <div key={i} style={{marginBottom:i<5?16:0}}><h4 style={{color:"#bbb",fontSize:12,fontWeight:700,marginBottom:4}}>{item.h}</h4><p style={{color:"#888",fontSize:11,lineHeight:1.6}}>{item.b}</p></div>
+              );})}
+            </div>
+          </div>
+
+          <div><h3 style={{color:"#ccc",fontSize:14,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.06em"}}>Key Assumptions & Disclaimers</h3>
+            <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:20}}>
+              <p style={{color:"#888",fontSize:11,lineHeight:1.7}}>This model is for illustrative and educational purposes only. It does not constitute investment advice. All projections are hypothetical and based on user-defined assumptions. Revenue growth curves, margin trajectories, WACC, and terminal growth rates are subjective inputs that materially affect outputs. Comparable company data should be independently verified. Past performance does not guarantee future results. Users should conduct their own due diligence and consult qualified financial advisors before making investment decisions. FCF in this model is a simplified proxy and does not account for working capital changes, capex detail, or other cash flow adjustments.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MAIN LAYOUT for model tabs */}
+      {(tab!=="home"&&tab!=="notes")&&(
+        <div style={{display:"flex",height:"calc(100vh - 118px)",overflow:"hidden"}}>
+          {/* LEFT PANEL */}
+          <div style={{width:290,flexShrink:0,background:C.surface,borderRight:"1px solid "+C.border,overflowY:"auto",padding:16}}>
+            <div style={{...darkCard,marginBottom:12}}>{SH("Company Basics")}
+              <Field label="Base Revenue ($M)" value={baseRev} onChange={setBaseRev} min={1} step={10}/>
+              <div style={{marginBottom:12}}><label style={{...labelStyle,lineHeight:"1.3"}}>Net Cash / (Debt) ($M)<br/><span style={{fontSize:9,color:C.textDim,fontWeight:400,textTransform:"none"}}>EV to Equity Adj.</span></label><input type="number" value={netCashAdj} step={10} onChange={function(e){setNetCashAdj(Number(e.target.value));}} style={inputStyle}/></div>
+              <Field label="Shares Out (M)" value={shares} onChange={setShares} min={0.1} step={0.1}/>
+              <Field label="Current Price ($)" value={curPrice} onChange={setCurPrice} min={0} step={1}/>
+              <Field label="Base Year" value={baseYear} onChange={setBaseYear} min={2000} max={2050} step={1}/>
+              <div style={{marginBottom:12}}><label style={labelStyle}>Projection Years</label><select value={projYrs} onChange={function(e){setProjYrs(Number(e.target.value));}} style={selectStyle}>{[3,4,5,6,7,8,9,10,12,15].map(function(y){return <option key={y} value={y}>{y}Y</option>;})}</select></div>
+            </div>
+            <div style={{...darkCard,marginBottom:12,borderColor:PRESETS[activeSc].color+"55"}}>{SH(PRESETS[activeSc].label+" Assumptions",PRESETS[activeSc].color)}
+              <div style={{background:C.bg,borderRadius:8,padding:10,marginBottom:10,border:"1px solid "+C.border}}>
+                <div style={{...labelStyle,color:C.green,marginBottom:6}}>Revenue Growth</div>
+                <div style={{marginBottom:6}}><label style={labelStyle}>Model</label><select value={sc.revMode} onChange={function(e){upSc(activeSc,"revMode",e.target.value);}} style={selectStyle}><option value="linear">Linear</option><option value="accelerating">Accelerating</option><option value="decaying">Decaying</option><option value="s-curve">S-Curve</option></select></div>
+                <Slider label="Start" value={sc.revGrowthStart} min={-10} max={50} step={1} onChange={function(v){upSc(activeSc,"revGrowthStart",v);}}/><Slider label="End" value={sc.revGrowthEnd} min={-10} max={50} step={1} onChange={function(v){upSc(activeSc,"revGrowthEnd",v);}}/>
+              </div>
+              <div style={{background:C.bg,borderRadius:8,padding:10,marginBottom:10,border:"1px solid "+C.border}}>
+                <div style={{...labelStyle,color:C.blueLight,marginBottom:6}}>FCF Margin</div>
+                <div style={{marginBottom:6}}><label style={labelStyle}>Model</label><select value={sc.fcfMode} onChange={function(e){upSc(activeSc,"fcfMode",e.target.value);}} style={selectStyle}><option value="linear">Linear</option><option value="accelerating">Accelerating</option><option value="decaying">Decaying</option><option value="s-curve">S-Curve</option></select></div>
+                <Slider label="Start" value={sc.fcfMarginStart} min={-20} max={50} step={0.5} onChange={function(v){upSc(activeSc,"fcfMarginStart",v);}}/><Slider label="End" value={sc.fcfMarginEnd} min={-20} max={50} step={0.5} onChange={function(v){upSc(activeSc,"fcfMarginEnd",v);}}/>
+              </div>
+              <Slider label="WACC" value={sc.wacc} min={5} max={20} step={0.5} onChange={function(v){upSc(activeSc,"wacc",v);}}/><Slider label="Terminal Growth" value={sc.terminalGrowth} min={-6} max={6} step={0.25} onChange={function(v){upSc(activeSc,"terminalGrowth",v);}}/>
+            </div>
+          </div>
+
+          {/* RIGHT CONTENT */}
+          <div id="main-content" style={{flex:1,overflowY:"auto",padding:20,background:C.bg}}>
+
+            {/* DCF */}
+            {tab==="dcf"&&(<div>
+              <div style={{display:"grid",gridTemplateColumns:"140px 1fr 1fr 1fr",gap:12,marginBottom:20}}>
+                <div style={{...darkCard,padding:14,borderTop:"3px solid #555",display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{color:"#ccc",fontSize:11,fontWeight:800,textTransform:"uppercase"}}>Current</div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>Price</div><div style={{fontSize:20,fontWeight:800}}>${fmtNum(curPrice,2)}</div></div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>EV</div><div style={{fontSize:14,fontWeight:700}}>{fmt(curEV)}</div></div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>Mkt Cap</div><div style={{color:C.textSec,fontSize:13,fontWeight:600}}>{fmt(curEqValue)}</div></div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>EV/Rev</div><div style={{color:C.textSec,fontSize:13,fontWeight:600}}>{fmtX(curEvRevNtm)}</div></div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>EV/FCF</div><div style={{color:C.textSec,fontSize:13,fontWeight:600}}>{fmtX(curEvFcfNtm)}</div></div>
+                </div>
+                {Object.entries(dcfR).map(function(pair){var k=pair[0],r=pair[1],p=PRESETS[k],s2=scenarios[k];var pv=((r.pricePerShare-curPrice)/curPrice*100);var pc=pv>=0?C.green:C.red;return(
+                  <div key={k} style={{...darkCard,borderTop:"3px solid "+p.color,cursor:"pointer",padding:14}} onClick={function(){setActiveSc(k);}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><span style={{color:p.color,fontSize:12,fontWeight:800,textTransform:"uppercase"}}>{p.label}</span>{activeSc===k&&<span style={{color:p.color,fontSize:8,fontWeight:800,background:p.color+"20",padding:"2px 8px",borderRadius:4}}>ACTIVE</span>}</div>
+                    <div style={{display:"flex",alignItems:"baseline",gap:14,marginBottom:6}}>
+                      <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>Price</div><div style={{color:p.color,fontSize:22,fontWeight:800}}>${fmtNum(r.pricePerShare,2)}</div></div>
+                      <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>vs Cur</div><div style={{color:pc,fontSize:22,fontWeight:800}}>{(pv>=0?"+":"")+fmtNum(pv,1)}%</div></div>
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <div style={{flex:"0 0 auto",minWidth:75}}>
+                        <div style={{marginBottom:3}}><div style={{color:C.textDim,fontSize:9}}>EV</div><div style={{color:p.color,fontSize:13,fontWeight:700}}>{fmt(r.enterpriseValue)}</div></div>
+                        <div style={{marginBottom:2}}><div style={{color:C.textDim,fontSize:9}}>EV/Rev</div><div style={{fontSize:11,fontWeight:600}}>{fmtX(r.evRevNtm)}</div></div>
+                        <div style={{marginBottom:2}}><div style={{color:C.textDim,fontSize:9}}>EV/FCF</div><div style={{fontSize:11,fontWeight:600}}>{fmtX(r.evFcfNtm)}</div></div>
+                        <div><div style={{color:C.textDim,fontSize:9}}>R40</div><div style={{fontSize:11,fontWeight:600}}>{fmtNum(r.rule40,1)}</div></div>
+                      </div>
+                      <div style={{flex:1,background:C.bg,border:"1px solid "+C.border,borderRadius:8,padding:"6px 8px"}}><MRow l="WACC" v={s2.wacc+"%"}/><MRow l="TGR" v={s2.terminalGrowth+"%"}/><MRow l="PV FCFs" v={fmt(r.pvFCF)}/><MRow l="TV%" v={fmtNum(r.tvPct,1)+"%"}/><MRow l="Avg Mg" v={fmtNum(r.avgMargin,1)+"%"}/><MRow l="CAGR" v={fmtNum(r.cagr,1)+"%"}/></div>
+                    </div>
+                  </div>);
+                })}
+              </div>
+              {/* White bg charts */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+                <div style={chartCard}>{SH("Revenue Projection ($M)",null,true)}<ResponsiveContainer width="100%" height={200}><LineChart data={chartData} margin={{top:15,right:35,bottom:5,left:5}}><CartesianGrid strokeDasharray="3 3" stroke="#e8e8e8"/><XAxis dataKey="year" tick={cTick} interval={projYrs>8?2:1}/><YAxis tick={cTick} width={50}/><Tooltip contentStyle={cTT}/><Legend wrapperStyle={{fontSize:10,fontFamily:ff,fontWeight:600,color:"#666"}}/><Line dataKey="bear_rev" name="Bear" stroke={C.red} strokeWidth={2} dot={{fill:C.red,r:2.5}} strokeDasharray="4 2"><LabelList content={function(p){if(p.index%3!==0||p.index===0)return null;return <SL {...p} fill={C.red+"88"}/>;}} /></Line><Line dataKey="base_rev" name="Base" stroke={C.blue} strokeWidth={2.5} dot={{fill:C.blue,r:2.5}}><LabelList content={function(p){if(p.index%3!==0||p.index===0)return null;return <SL {...p} fill={C.blue+"88"}/>;}} /></Line><Line dataKey="bull_rev" name="Bull" stroke={C.green} strokeWidth={2} dot={{fill:C.green,r:2.5}} strokeDasharray="4 2"><LabelList content={function(p){if(p.index%3!==0||p.index===0)return null;return <SL {...p} fill={C.green+"88"}/>;}} /></Line></LineChart></ResponsiveContainer></div>
+                <div style={chartCard}>{SH("FCF Margin Trajectory (%)",null,true)}<ResponsiveContainer width="100%" height={200}><LineChart data={chartData} margin={{top:15,right:35,bottom:5,left:5}}><CartesianGrid strokeDasharray="3 3" stroke="#e8e8e8"/><XAxis dataKey="year" tick={cTick} interval={projYrs>8?2:1}/><YAxis tick={cTick} width={40} unit="%"/><Tooltip contentStyle={cTT}/><Legend wrapperStyle={{fontSize:10,fontFamily:ff,fontWeight:600,color:"#666"}}/><Line dataKey="bear_margin" name="Bear" stroke={C.red} strokeWidth={2} dot={{fill:C.red,r:2.5}} strokeDasharray="4 2"><LabelList content={function(p){if(p.index%3!==0||p.index===0)return null;return <SLP {...p} fill={C.red+"88"}/>;}} /></Line><Line dataKey="base_margin" name="Base" stroke={C.blue} strokeWidth={2.5} dot={{fill:C.blue,r:2.5}}><LabelList content={function(p){if(p.index%3!==0||p.index===0)return null;return <SLP {...p} fill={C.blue+"88"}/>;}} /></Line><Line dataKey="bull_margin" name="Bull" stroke={C.green} strokeWidth={2} dot={{fill:C.green,r:2.5}} strokeDasharray="4 2"><LabelList content={function(p){if(p.index%3!==0||p.index===0)return null;return <SLP {...p} fill={C.green+"88"}/>;}} /></Line></LineChart></ResponsiveContainer></div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+                <div style={chartCard}>{SH("Revenue Growth Rate - "+PRESETS[activeSc].label,PRESETS[activeSc].color)}<ResponsiveContainer width="100%" height={180}><LineChart data={chartData.slice(1)} margin={{top:15,right:35,bottom:5,left:5}}><CartesianGrid strokeDasharray="3 3" stroke="#e8e8e8"/><XAxis dataKey="year" tick={cTick} interval={projYrs>8?1:0}/><YAxis tick={cTick} width={40} unit="%"/><Tooltip contentStyle={cTT}/><Line dataKey={activeSc+"_growth"} name="Growth %" stroke={PRESETS[activeSc].color} strokeWidth={2.5} dot={{fill:PRESETS[activeSc].color,r:3}}><LabelList content={function(p){return <SLP {...p} fill={PRESETS[activeSc].color+"aa"}/>;}} /></Line></LineChart></ResponsiveContainer></div>
+                <div style={chartCard}>{SH("Free Cash Flow ($M) - "+PRESETS[activeSc].label,PRESETS[activeSc].color)}<ResponsiveContainer width="100%" height={180}><BarChart data={chartData.slice(1)} margin={{top:5,right:20,bottom:5,left:5}}><CartesianGrid strokeDasharray="3 3" stroke="#e8e8e8"/><XAxis dataKey="year" tick={cTick} interval={projYrs>8?1:0}/><YAxis tick={cTick} width={50}/><Tooltip contentStyle={cTT}/><Bar dataKey={activeSc+"_fcf"} name="FCF" fill={PRESETS[activeSc].color} radius={[6,6,0,0]}><LabelList dataKey={activeSc+"_fcf"} content={function(p){return <BIL {...p}/>;}} /></Bar></BarChart></ResponsiveContainer></div>
+              </div>
+              <div style={darkCard}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>{SH("DCF Detail - "+PRESETS[activeSc].label,PRESETS[activeSc].color)}<button onClick={function(){downloadCSV(chartData,res,activeSc);}} style={{background:C.blue,border:"none",color:"#fff",borderRadius:6,padding:"6px 16px",cursor:"pointer",fontFamily:ff,fontSize:11,fontWeight:700,marginBottom:12}}>CSV</button></div>
+                <div style={{overflowX:"auto"}}><table><thead><tr><th>Metric</th>{chartData.map(function(d){return <th key={d.year}>{d.year}</th>;})}</tr></thead><tbody>
+                  <tr><td>Revenue ($M)</td>{res.revenues.map(function(v,i){return <td key={i}>{(v/1e6).toFixed(1)}</td>;})}</tr>
+                  <tr><td>Growth %</td>{chartData.map(function(d,i){return <td key={i} style={{color:C.green}}>{i===0?"\u2014":d[activeSc+"_growth"]+"%"}</td>;})}</tr>
+                  <tr><td>FCF Margin %</td>{chartData.map(function(d,i){return <td key={i} style={{color:C.blueLight}}>{d[activeSc+"_margin"]+"%"}</td>;})}</tr>
+                  <tr><td>FCF ($M)</td>{res.fcfs.map(function(v,i){return <td key={i} style={{color:C.blue}}>{(v/1e6).toFixed(1)}</td>;})}</tr>
+                  <tr><td>Disc FCF</td><td style={{color:C.textDim}}>{"\u2014"}</td>{res.discountedFCFs.map(function(v,i){return <td key={i} style={{color:C.textSec}}>{(v/1e6).toFixed(1)}</td>;})}</tr>
+                </tbody></table></div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginTop:12}}>{[{l:"PV of FCFs",v:fmt(res.pvFCF)},{l:"PV of Terminal",v:fmt(res.pvTerminal)},{l:"Enterprise Value",v:fmt(res.enterpriseValue)}].map(function(k,i){return <div key={i} style={{background:C.bg,borderRadius:8,padding:12,border:"1px solid "+C.border,borderLeft:"3px solid "+C.blue}}><div style={{color:C.textSec,fontSize:10,fontWeight:600,textTransform:"uppercase"}}>{k.l}</div><div style={{color:C.blue,fontSize:18,fontWeight:800,marginTop:4}}>{k.v}</div></div>;})}</div>
+              </div>
+            </div>)}
+
+            {/* COMPS */}
+            {tab==="comps"&&(<div>
+              {compsA&&(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+                <div style={darkCard}>{SH("Multiple Statistics")}<table><thead><tr><th>Source</th><th>EV/Rev</th><th>Growth</th></tr></thead><tbody>
+                  <tr><td style={{color:"#ccc",fontWeight:700}}>Mean</td><td style={{fontWeight:700}}>{fmtX(compsA.evRevStats.mean)}</td><td>{fmtNum(compsA.revGrowthStats.mean,1)}%</td></tr>
+                  <tr><td style={{color:"#ccc",fontWeight:700}}>Median</td><td style={{fontWeight:700}}>{fmtX(compsA.evRevStats.median)}</td><td>{fmtNum(compsA.revGrowthStats.median,1)}%</td></tr>
+                  <tr><td style={{color:C.textDim}}>25th</td><td style={{color:C.textDim}}>{fmtX(compsA.evRevStats.p25)}</td><td></td></tr>
+                  <tr><td style={{color:C.textDim}}>75th</td><td style={{color:C.textDim}}>{fmtX(compsA.evRevStats.p75)}</td><td></td></tr>
+                  {Object.entries(dcfR).map(function(p){var k=p[0],r=p[1],pr=PRESETS[k];return <tr key={k}><td style={{color:pr.color,fontWeight:700}}>{pr.label+" DCF"}</td><td style={{color:pr.color}}>{fmtX(r.evRevNtm)}</td><td style={{color:pr.color}}>{fmtNum(r.ntmGrowth,1)}%</td></tr>;})}
+                  {selComps.map(function(c,i){return <tr key={i}><td>{c.name}</td><td>{fmtX(c.ev/c.revNtm)}</td><td>{fmtNum((c.revNtm-c.revLatest)/c.revLatest*100,1)}%</td></tr>;})}
+                </tbody></table></div>
+                <div style={darkCard}>{SH("Implied Valuation")}<table><thead><tr><th>Method</th><th>Mult</th><th>EV</th><th>Equity</th><th>$/Sh</th></tr></thead><tbody>
+                  {[{l:"Mean",m:compsA.evRevStats.mean},{l:"Median",m:compsA.evRevStats.median},{l:"25th",m:compsA.evRevStats.p25},{l:"75th",m:compsA.evRevStats.p75}].concat(Object.entries(dcfR).map(function(p){return{l:PRESETS[p[0]].label,m:p[1].evRevNtm,c:PRESETS[p[0]].color};})).map(function(row){var iev=row.m*baseRes.ntmRev;var ieq=iev+netCashAdj*1e6;var pps=ieq/(shares*1e6);return <tr key={row.l}><td style={{color:row.c||C.textSec}}>{row.l}</td><td style={{color:row.c||C.blueLight}}>{fmtX(row.m)}</td><td>{fmt(iev)}</td><td style={{color:C.green}}>{fmt(ieq)}</td><td style={{color:row.c||C.blue,fontWeight:700}}>${fmtNum(pps,2)}</td></tr>;})}
+                </tbody></table></div>
+              </div>)}
+              <div style={{...chartCard,marginBottom:20}}>{SH("EV/Revenue vs. Revenue Growth",null,true)}{(function(){var scData=selComps.map(function(c){return{revGrowth:+((c.revNtm-c.revLatest)/c.revLatest*100).toFixed(1),evRev:+(c.ev/c.revNtm).toFixed(2)};}).concat(Object.entries(dcfR).map(function(p){var r=p[1];return{revGrowth:+r.ntmGrowth.toFixed(1),evRev:+r.evRevNtm.toFixed(2)};}));var maxX=Math.max.apply(null,scData.map(function(d){return d.revGrowth;}));var maxY=Math.max.apply(null,scData.map(function(d){return d.evRev;}));var xInt=maxX<=12?3:maxX<=30?6:10;var yInt=maxY<=6?1.5:maxY<=15?3:5;var xMax=Math.ceil(maxX/xInt)*xInt+xInt;var yMax=Math.ceil(maxY/yInt)*yInt+yInt;return <ResponsiveContainer width="100%" height={280}><ScatterChart margin={{top:10,right:30,bottom:25,left:20}}><CartesianGrid strokeDasharray="3 3" stroke="#e8e8e8"/><XAxis dataKey="revGrowth" name="Growth %" unit="%" tick={cTick} label={{value:"NTM Revenue Growth %",position:"bottom",fill:"#888",fontSize:10,fontWeight:600}} type="number" domain={[0,xMax]}/><YAxis dataKey="evRev" name="EV/Rev" unit="x" tick={cTick} width={45} type="number" domain={[0,yMax]} label={{value:"EV / NTM Revenue",angle:-90,position:"insideLeft",fill:"#888",fontSize:10,fontWeight:600,offset:5}}/><Tooltip cursor={{strokeDasharray:"3 3"}} contentStyle={cTT} labelFormatter={function(){return"";}} content={function(props){if(!props.active||!props.payload||!props.payload.length)return null;var d=props.payload[0].payload;var col=d.type==="comp"?"#333":PRESETS[d.type]?PRESETS[d.type].color:"#333";return <div style={{...cTT,padding:10,borderRadius:6,boxShadow:"0 2px 8px rgba(0,0,0,0.12)"}}><div style={{fontWeight:700,marginBottom:6,color:col}}>{d.name}</div><div style={{fontSize:11,color:"#444",lineHeight:1.7}}>{"Growth: "+d.revGrowth+"%"}<br/>{"EV/Rev: "+d.evRev.toFixed(2)+"x"}<br/>{"Mkt Cap: "+(d.mktCap!=null?fmt(d.mktCap):"\u2014")}<br/>{"EV: "+(d.ev!=null?fmt(d.ev):"\u2014")}<br/>{"Rev (Latest): "+(d.revLatest!=null?fmt(d.revLatest):"\u2014")}</div></div>;}}/><Scatter data={selComps.map(function(c){return{name:c.name,revGrowth:+((c.revNtm-c.revLatest)/c.revLatest*100).toFixed(1),evRev:+(c.ev/c.revNtm).toFixed(2),type:"comp",mktCap:c.sharePrice*c.sharesM*1e6,ev:c.ev*1e6,revLatest:c.revLatest*1e6};}).concat(Object.entries(dcfR).map(function(p){var k=p[0],r=p[1];return{name:PRESETS[k].label,revGrowth:+r.ntmGrowth.toFixed(1),evRev:+r.evRevNtm.toFixed(2),type:k,mktCap:r.equityValue,ev:r.enterpriseValue,revLatest:baseRev*1e6};}))} name="All" shape={function(props){var d=props.payload||{};var col=d.type==="comp"?"#333":PRESETS[d.type]?PRESETS[d.type].color:"#333";return <g><circle cx={props.cx} cy={props.cy} r={5} fill={col}/><text x={props.cx+8} y={props.cy-8} fill={col} fontSize={9} fontFamily={ff} fontWeight={600}>{d.name}</text></g>;}}>{selComps.map(function(_,i){return <Cell key={"c"+i} fill="#333"/>;}).concat(Object.entries(dcfR).map(function(p,i){return <Cell key={"s"+i} fill={PRESETS[p[0]].color}/>;}))}</Scatter></ScatterChart></ResponsiveContainer>;})()}<div style={{display:"flex",flexWrap:"wrap",gap:16,justifyContent:"center",marginTop:8}}>{Object.entries(PRESETS).map(function(p){return <span key={p[0]} style={{color:p[1].color,fontSize:10,fontWeight:700}}>{"\u25CF "+p[1].label}</span>;})}<span style={{color:"#333",fontSize:10,fontWeight:700}}>{"\u25CF Comparables"}</span></div></div>
+              <div style={darkCard}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>{SH("Comparable Companies")}<button onClick={function(){setComps(function(prev){return prev.concat([{name:"New",selected:false,sharePrice:0,sharesM:0,ev:0,revLatest:0,revNtm:0,ebitdaPctLatest:null,ebitdaPctNtm:null}]);});}} style={{background:C.blue,border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontFamily:ff,fontSize:11,fontWeight:700,marginBottom:12}}>+ Add</button></div>
+                <div style={{overflowX:"auto"}}><table><thead><tr><th style={{width:30}}></th><th style={{textAlign:"left",minWidth:110}}>Company</th><th>Price</th><th>Shares</th><th>MktCap</th><th>EV</th><th>RevL</th><th>RevN</th><th>Gr%</th><th>EV/R</th><th>EB%L</th><th>EB%N</th></tr></thead><tbody>
+                  {comps.map(function(c,i){var mc=(c.sharePrice*c.sharesM).toFixed(0);var rg=c.revLatest>0?((c.revNtm-c.revLatest)/c.revLatest*100).toFixed(1)+"%":"\u2014";var er=c.revNtm>0?(c.ev/c.revNtm).toFixed(1)+"x":"\u2014";function up(f,v){setComps(function(p){return p.map(function(cc,j){if(j!==i)return cc;var o={...cc};o[f]=v;return o;});});}return <tr key={i} style={{background:c.selected?C.blue+"12":"none"}}><td><input type="checkbox" checked={c.selected} onChange={function(e){up("selected",e.target.checked);}}/></td><td style={{textAlign:"left"}}><input value={c.name} onChange={function(e){up("name",e.target.value);}} className="ci" style={{textAlign:"left",minWidth:90}}/></td><td><input type="number" value={c.sharePrice} step={0.01} onChange={function(e){up("sharePrice",Number(e.target.value));}} className="ci"/></td><td><input type="number" value={c.sharesM} step={1} onChange={function(e){up("sharesM",Number(e.target.value));}} className="ci"/></td><td style={{color:C.textDim}}>{mc}</td><td><input type="number" value={c.ev} step={10} onChange={function(e){up("ev",Number(e.target.value));}} className="ci"/></td><td><input type="number" value={c.revLatest} step={1} onChange={function(e){up("revLatest",Number(e.target.value));}} className="ci"/></td><td><input type="number" value={c.revNtm} step={1} onChange={function(e){up("revNtm",Number(e.target.value));}} className="ci"/></td><td style={{color:C.green}}>{rg}</td><td style={{color:C.blueLight}}>{er}</td><td><input type="number" value={c.ebitdaPctLatest==null?"":c.ebitdaPctLatest} step={0.1} placeholder="-" onChange={function(e){up("ebitdaPctLatest",e.target.value===""?null:Number(e.target.value));}} className="ci"/></td><td><input type="number" value={c.ebitdaPctNtm==null?"":c.ebitdaPctNtm} step={0.1} placeholder="-" onChange={function(e){up("ebitdaPctNtm",e.target.value===""?null:Number(e.target.value));}} className="ci"/></td></tr>;})}
+                </tbody></table></div>
+              </div>
+            </div>)}
+
+            {/* SENSITIVITY */}
+            {tab==="sensitivity"&&(<div>
+              <div style={{display:"grid",gridTemplateColumns:"140px 1fr 1fr 1fr",gap:12,marginBottom:20}}>
+                <div style={{...darkCard,padding:14,borderTop:"3px solid #555",display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{color:"#ccc",fontSize:11,fontWeight:800,textTransform:"uppercase"}}>Current</div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>Price</div><div style={{fontSize:20,fontWeight:800}}>${fmtNum(curPrice,2)}</div></div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>EV</div><div style={{fontSize:14,fontWeight:700}}>{fmt(curEV)}</div></div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>Mkt Cap</div><div style={{color:C.textSec,fontSize:13,fontWeight:600}}>{fmt(curEqValue)}</div></div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>EV/Rev</div><div style={{color:C.textSec,fontSize:13,fontWeight:600}}>{fmtX(curEvRevNtm)}</div></div>
+                  <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>EV/FCF</div><div style={{color:C.textSec,fontSize:13,fontWeight:600}}>{fmtX(curEvFcfNtm)}</div></div>
+                </div>
+                {Object.entries(dcfR).map(function(pair){var k=pair[0],r=pair[1],p=PRESETS[k],s2=scenarios[k];var pv=((r.pricePerShare-curPrice)/curPrice*100);var pc=pv>=0?C.green:C.red;return(
+                  <div key={k} style={{...darkCard,borderTop:"3px solid "+p.color,cursor:"pointer",padding:14}} onClick={function(){setActiveSc(k);}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><span style={{color:p.color,fontSize:12,fontWeight:800,textTransform:"uppercase"}}>{p.label}</span>{activeSc===k&&<span style={{color:p.color,fontSize:8,fontWeight:800,background:p.color+"20",padding:"2px 8px",borderRadius:4}}>ACTIVE</span>}</div>
+                    <div style={{display:"flex",alignItems:"baseline",gap:14,marginBottom:6}}>
+                      <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>Price</div><div style={{color:p.color,fontSize:22,fontWeight:800}}>${fmtNum(r.pricePerShare,2)}</div></div>
+                      <div><div style={{color:C.textDim,fontSize:9,fontWeight:600}}>vs Cur</div><div style={{color:pc,fontSize:22,fontWeight:800}}>{(pv>=0?"+":"")+fmtNum(pv,1)}%</div></div>
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <div style={{flex:"0 0 auto",minWidth:75}}>
+                        <div style={{marginBottom:3}}><div style={{color:C.textDim,fontSize:9}}>EV</div><div style={{color:p.color,fontSize:13,fontWeight:700}}>{fmt(r.enterpriseValue)}</div></div>
+                        <div style={{marginBottom:2}}><div style={{color:C.textDim,fontSize:9}}>EV/Rev</div><div style={{fontSize:11,fontWeight:600}}>{fmtX(r.evRevNtm)}</div></div>
+                        <div style={{marginBottom:2}}><div style={{color:C.textDim,fontSize:9}}>EV/FCF</div><div style={{fontSize:11,fontWeight:600}}>{fmtX(r.evFcfNtm)}</div></div>
+                        <div><div style={{color:C.textDim,fontSize:9}}>R40</div><div style={{fontSize:11,fontWeight:600}}>{fmtNum(r.rule40,1)}</div></div>
+                      </div>
+                      <div style={{flex:1,background:C.bg,border:"1px solid "+C.border,borderRadius:8,padding:"6px 8px"}}><MRow l="WACC" v={s2.wacc+"%"}/><MRow l="TGR" v={s2.terminalGrowth+"%"}/><MRow l="PV FCFs" v={fmt(r.pvFCF)}/><MRow l="TV%" v={fmtNum(r.tvPct,1)+"%"}/><MRow l="Avg Mg" v={fmtNum(r.avgMargin,1)+"%"}/><MRow l="CAGR" v={fmtNum(r.cagr,1)+"%"}/></div>
+                    </div>
+                  </div>);
+                })}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                <div style={chartCard}>{SH("EV vs. Terminal Growth",null,true)}<ResponsiveContainer width="100%" height={220}><LineChart data={[-4,-3,-2,-1,0,1,2,3,4,5].map(function(tg){var pt={tg:tg+"%"};Object.entries(scenarios).forEach(function(p){var k=p[0],s2=p[1];if(s2.wacc/100<=tg/100){pt[k]=null;return;}var rr=bgs(s2.revMode,s2.revGrowthStart,s2.revGrowthEnd,projYrs);var fr=bgs(s2.fcfMode,s2.fcfMarginStart,s2.fcfMarginEnd,projYrs+1);var revs=pRev(baseRev*1e6,rr);var fcfs=pFCF(revs,fr);var r=cDCF(fcfs,s2.wacc,tg);pt[k]=r.enterpriseValue>0?+(r.enterpriseValue/1e6).toFixed(1):null;});return pt;})} margin={{top:15,right:30,bottom:5,left:5}}><CartesianGrid strokeDasharray="3 3" stroke="#e8e8e8"/><XAxis dataKey="tg" tick={cTick}/><YAxis tick={cTick} width={60}/><Tooltip contentStyle={cTT} formatter={function(v){return["$"+v+"M"];}}/><Legend wrapperStyle={{fontSize:10,fontWeight:600,color:"#666"}}/><Line dataKey="bear" name="Bear" stroke={C.red} strokeWidth={2} dot={false} connectNulls={false}><LabelList content={function(p){if(p.index%2!==0)return null;return <EVL {...p} fill={C.red+"77"}/>;}} /></Line><Line dataKey="base" name="Base" stroke={C.blue} strokeWidth={2.5} dot={false} connectNulls={false}><LabelList content={function(p){if(p.index%2!==0)return null;return <EVL {...p} fill={C.blue+"77"}/>;}} /></Line><Line dataKey="bull" name="Bull" stroke={C.green} strokeWidth={2} dot={false} connectNulls={false}><LabelList content={function(p){if(p.index%2!==0)return null;return <EVL {...p} fill={C.green+"77"}/>;}} /></Line></LineChart></ResponsiveContainer></div>
+                <div style={chartCard}>{SH("EV vs. WACC",null,true)}<ResponsiveContainer width="100%" height={220}><LineChart data={[6,7,8,9,10,11,12,13,14,15].map(function(w){var pt={wacc:w+"%"};Object.entries(scenarios).forEach(function(p){var k=p[0],s2=p[1];if(w/100<=s2.terminalGrowth/100){pt[k]=null;return;}var rr=bgs(s2.revMode,s2.revGrowthStart,s2.revGrowthEnd,projYrs);var fr=bgs(s2.fcfMode,s2.fcfMarginStart,s2.fcfMarginEnd,projYrs+1);var revs=pRev(baseRev*1e6,rr);var fcfs=pFCF(revs,fr);var r=cDCF(fcfs,w,s2.terminalGrowth);pt[k]=r.enterpriseValue>0?+(r.enterpriseValue/1e6).toFixed(1):null;});return pt;})} margin={{top:15,right:30,bottom:5,left:5}}><CartesianGrid strokeDasharray="3 3" stroke="#e8e8e8"/><XAxis dataKey="wacc" tick={cTick}/><YAxis tick={cTick} width={60}/><Tooltip contentStyle={cTT} formatter={function(v){return["$"+v+"M"];}}/><Legend wrapperStyle={{fontSize:10,fontWeight:600,color:"#666"}}/><Line dataKey="bear" name="Bear" stroke={C.red} strokeWidth={2} dot={false} connectNulls={false}><LabelList content={function(p){if(p.index%2!==0)return null;return <EVL {...p} fill={C.red+"77"}/>;}} /></Line><Line dataKey="base" name="Base" stroke={C.blue} strokeWidth={2.5} dot={false} connectNulls={false}><LabelList content={function(p){if(p.index%2!==0)return null;return <EVL {...p} fill={C.blue+"77"}/>;}} /></Line><Line dataKey="bull" name="Bull" stroke={C.green} strokeWidth={2} dot={false} connectNulls={false}><LabelList content={function(p){if(p.index%2!==0)return null;return <EVL {...p} fill={C.green+"77"}/>;}} /></Line></LineChart></ResponsiveContainer></div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                <div style={darkCard}>{SH("WACC Range")}<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[7,7.5,8,8.5,9,9.5,10,10.5,11,11.5,12,13,14,15].map(function(w){return <button key={w} onClick={function(){setSensW(function(p){return(p.includes(w)?p.filter(function(x){return x!==w;}):p.concat([w])).sort(function(a,b){return a-b;});});}} style={{background:sensW.includes(w)?C.blue+"20":C.bg,border:"1px solid "+(sensW.includes(w)?C.blue:C.border),color:sensW.includes(w)?C.blue:C.textDim,borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:600}}>{w}%</button>;})}</div></div>
+                <div style={darkCard}>{SH("Terminal Growth Range")}<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[-4,-3,-2,-1,0,0.5,1,1.5,2,2.5,3,3.5,4,5].map(function(g){return <button key={g} onClick={function(){setSensT(function(p){return(p.includes(g)?p.filter(function(x){return x!==g;}):p.concat([g])).sort(function(a,b){return a-b;});});}} style={{background:sensT.includes(g)?C.blue+"20":C.bg,border:"1px solid "+(sensT.includes(g)?C.blue:C.border),color:sensT.includes(g)?C.blue:C.textDim,borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:600}}>{g}%</button>;})}</div></div>
+              </div>
+              {Object.entries(sensAll).filter(function(pair){return pair[0]===activeSc;}).map(function(pair){var sKey=pair[0],sTable=pair[1],sPr=PRESETS[sKey],sSc=scenarios[sKey];var allV=sTable.reduce(function(a,r){return a.concat(r.values);},[]).filter(function(v){return isFinite(v)&&v>0;});var minV=allV.length?Math.min.apply(null,allV):0,maxV=allV.length?Math.max.apply(null,allV):1;return(<div key={sKey} style={{...darkCard,marginBottom:16,borderTop:"3px solid "+sPr.color}}>
+                {SH("Share Price - "+sPr.label,sPr.color)}
+                <div style={{overflowX:"auto"}}><table><thead><tr><th>WACC / TGR</th>{sensT.map(function(tg){return <th key={tg}>{tg}%</th>;})}</tr></thead><tbody>{sTable.map(function(row){return <tr key={row.wacc}><td style={{color:C.textSec}}>{row.wacc}%</td>{row.values.map(function(val,j){var t=allV.length?(val-minV)/(maxV-minV||1):0.5;var bg=t>0.5?"rgba(0,200,83,"+((t-0.5)*0.4)+")":"rgba(255,82,82,"+((0.5-t)*0.4)+")";var isB=Math.abs(row.wacc-sSc.wacc)<0.1&&Math.abs(sensT[j]-sSc.terminalGrowth)<0.1;return <td key={j} style={{background:bg,fontWeight:isB?800:500,border:isB?"2px solid "+sPr.color:"none"}}>${fmtNum(val,2)}</td>;})}</tr>})}</tbody></table></div>
+                <div style={{marginTop:10}}>{SH("% vs Current ($"+fmtNum(curPrice,2)+")",sPr.color)}</div>
+                <div style={{overflowX:"auto"}}><table><thead><tr><th>WACC / TGR</th>{sensT.map(function(tg){return <th key={tg}>{tg}%</th>;})}</tr></thead><tbody>{sTable.map(function(row){return <tr key={row.wacc}><td style={{color:C.textSec}}>{row.wacc}%</td>{row.values.map(function(val,j){var pct=((val-curPrice)/curPrice*100);var col=pct>=0?C.green:C.red;var isB=Math.abs(row.wacc-sSc.wacc)<0.1&&Math.abs(sensT[j]-sSc.terminalGrowth)<0.1;return <td key={j} style={{color:col,fontWeight:isB?800:500,border:isB?"2px solid "+sPr.color:"none"}}>{(pct>=0?"+":"")+fmtNum(pct,0)}%</td>;})}</tr>})}</tbody></table></div>
+              </div>);})}
+            </div>)}
+
+            {/* SUMMARY */}
+            {tab==="summary"&&(<div>
+              <div style={{...darkCard,marginBottom:20}}>{SH("Football Field - Implied Share Price")}
+                {football.map(function(row,i){var allVals=football.reduce(function(a,r){return a.concat([r.low,r.high]);},[]).filter(function(v){return v>0&&isFinite(v);});var gMin=Math.min.apply(null,allVals)*0.85,gMax=Math.max.apply(null,allVals)*1.1,range=gMax-gMin;var lP=((row.low-gMin)/range)*100,wP=((row.high-row.low)/range)*100,mP=((row.mid-gMin)/range)*100;return(
+                  <div key={i} style={{marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{color:C.textSec,fontSize:11,fontWeight:600,width:200}}>{row.method}</span><span style={{color:row.color,fontSize:11,fontWeight:700}}>${fmtNum(row.low,2)} - ${fmtNum(row.high,2)} <span style={{color:C.textDim,fontWeight:500}}>(mid: ${fmtNum(row.mid,2)})</span></span></div><div style={{position:"relative",height:24,background:C.surface,borderRadius:6,border:"1px solid "+C.border}}><div style={{position:"absolute",left:Math.max(0,lP)+"%",width:Math.min(100-Math.max(0,lP),wP)+"%",height:"100%",background:row.color+"33",borderRadius:6,border:"1px solid "+row.color+"55"}}/><div style={{position:"absolute",left:mP+"%",top:0,width:2,height:"100%",background:row.color,borderRadius:1}}/></div></div>);})}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
+                {Object.entries(dcfR).map(function(pair){var k=pair[0],r=pair[1],p=PRESETS[k],s2=scenarios[k];var pv=((r.pricePerShare-curPrice)/curPrice*100);return(
+                  <div key={k} style={{...darkCard,borderTop:"3px solid "+p.color}}>
+                    <div style={{color:p.color,fontSize:13,fontWeight:800,textTransform:"uppercase",marginBottom:14}}>{p.label} Case</div>
+                    {[{l:"Enterprise Value",v:fmt(r.enterpriseValue)},{l:"Equity Value",v:fmt(r.equityValue)},{l:"Share Price",v:"$"+fmtNum(r.pricePerShare,2)},{l:"vs Current",v:(pv>=0?"+":"")+fmtNum(pv,1)+"%"},{l:"TV % of EV",v:fmtNum(r.tvPct,1)+"%"},{l:"WACC",v:s2.wacc+"%"},{l:"TGR",v:s2.terminalGrowth+"%"},{l:"Rev Growth",v:s2.revGrowthStart+"%\u2192"+s2.revGrowthEnd+"%"},{l:"FCF Margin",v:s2.fcfMarginStart+"%\u2192"+s2.fcfMarginEnd+"%"},{l:"CAGR",v:fmtNum(r.cagr,1)+"%"},{l:"Avg Margin",v:fmtNum(r.avgMargin,1)+"%"}].map(function(item,i){return <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid "+C.border+"33"}}><span style={{color:C.textSec,fontSize:11,fontWeight:500}}>{item.l}</span><span style={{color:i<3?p.color:i===3?(pv>=0?C.green:C.red):C.text,fontSize:11,fontWeight:i<4?700:500}}>{item.v}</span></div>;})}
+                  </div>);})}
+              </div>
+            </div>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
