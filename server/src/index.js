@@ -33,6 +33,18 @@ app.use(cors({
 
 app.use(express.json())
 
+// Log all errors
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res)
+  res.json = (body) => {
+    if (res.statusCode >= 500) {
+      console.error(`ERROR ${req.method} ${req.path}:`, body)
+    }
+    return originalJson(body)
+  }
+  next()
+})
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
@@ -45,6 +57,7 @@ app.get('/api/accounts', async (req, res) => {
     const result = await db.select().from(accounts)
     res.json(result)
   } catch (err) {
+    console.error('GET /api/accounts error:', err)
     res.status(500).json({ error: err.message })
   }
 })

@@ -12,14 +12,19 @@ let sqlite = null
 async function getDb() {
   if (db) return { db, sqlite }
 
+  console.log('Initializing database at:', dbPath)
+  console.log('Database file exists:', fs.existsSync(dbPath))
+
   const SQL = await initSqlJs()
 
   // Load existing database file if it exists, otherwise create new
   if (fs.existsSync(dbPath)) {
     const fileBuffer = fs.readFileSync(dbPath)
     sqlite = new SQL.Database(fileBuffer)
+    console.log('Loaded existing database')
   } else {
     sqlite = new SQL.Database()
+    console.log('Created new empty database — run npm run db:seed to populate')
   }
 
   sqlite.run('PRAGMA foreign_keys = ON')
