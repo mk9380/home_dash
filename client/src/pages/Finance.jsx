@@ -21,12 +21,16 @@ function Finance() {
   })
 
   const fetchData = useCallback(async () => {
-    const [summaryRes, txRes] = await Promise.all([
-      fetch(`${API_BASE}/api/transactions/summary?month=${month}`),
-      fetch(`${API_BASE}/api/transactions?month=${month}`)
-    ])
-    setSummary(await summaryRes.json())
-    setTransactions(await txRes.json())
+    try {
+      const [summaryRes, txRes] = await Promise.all([
+        fetch(`${API_BASE}/api/transactions/summary?month=${month}`),
+        fetch(`${API_BASE}/api/transactions?month=${month}`)
+      ])
+      if (summaryRes.ok) setSummary(await summaryRes.json())
+      if (txRes.ok) setTransactions(await txRes.json())
+    } catch {
+      console.error('Failed to fetch finance data')
+    }
   }, [month])
 
   useEffect(() => {
@@ -35,12 +39,12 @@ function Finance() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API_BASE}/api/categories`).then(r => r.json()),
-      fetch(`${API_BASE}/api/accounts`).then(r => r.json())
+      fetch(`${API_BASE}/api/categories`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE}/api/accounts`).then(r => r.ok ? r.json() : [])
     ]).then(([cats, accts]) => {
       setCategories(cats)
       setAccounts(accts)
-    })
+    }).catch(() => {})
   }, [])
 
   const changeMonth = (delta) => {
