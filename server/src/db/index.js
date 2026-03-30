@@ -32,13 +32,40 @@ const CREATE_TABLES_SQL = `
     date TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    status TEXT DEFAULT 'active',
+    color TEXT DEFAULT '#6366f1',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER REFERENCES projects(id),
     title TEXT NOT NULL,
     description TEXT,
     assigned_to TEXT,
     status TEXT DEFAULT 'todo',
+    priority TEXT DEFAULT 'medium',
+    theme TEXT,
+    tag TEXT DEFAULT 'home',
     due_date TEXT,
+    completed_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS subtasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER REFERENCES tasks(id) NOT NULL,
+    title TEXT NOT NULL,
+    is_complete INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER REFERENCES tasks(id) NOT NULL,
+    author TEXT NOT NULL,
+    body TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS meal_plans (
@@ -91,6 +118,21 @@ async function getDb() {
   // Always ensure tables and seed data exist
   sqlite.run(CREATE_TABLES_SQL)
   sqlite.run(SEED_SQL)
+
+  // Migrate existing tasks table if missing new columns
+  const MIGRATIONS = [
+    { column: 'project_id', sql: 'ALTER TABLE tasks ADD COLUMN project_id INTEGER REFERENCES projects(id)' },
+    { column: 'priority', sql: "ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT 'medium'" },
+    { column: 'theme', sql: 'ALTER TABLE tasks ADD COLUMN theme TEXT' },
+    { column: 'tag', sql: "ALTER TABLE tasks ADD COLUMN tag TEXT DEFAULT 'home'" },
+    { column: 'completed_at', sql: 'ALTER TABLE tasks ADD COLUMN completed_at TEXT' }
+  ]
+  for (const m of MIGRATIONS) {
+    try { sqlite.run(m.sql) } catch (e) {
+      if (!e.message.includes('duplicate column')) throw e
+    }
+  }
+
   saveDb()
   console.log('Database tables and seed data verified')
 

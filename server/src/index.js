@@ -8,6 +8,7 @@ const { accounts } = require('./db/schema')
 
 const transactionsRouter = require('./routes/transactions')
 const categoriesRouter = require('./routes/categories')
+const projectsRouter = require('./routes/projects')
 const tasksRouter = require('./routes/tasks')
 const mealsRouter = require('./routes/meals')
 const insightsRouter = require('./routes/insights')
@@ -65,6 +66,7 @@ app.get('/api/accounts', async (req, res) => {
 // Mount routers
 app.use('/api/transactions', transactionsRouter)
 app.use('/api/categories', categoriesRouter)
+app.use('/api/projects', projectsRouter)
 app.use('/api/tasks', tasksRouter)
 app.use('/api/meals', mealsRouter)
 app.use('/api/insights', insightsRouter)
