@@ -15,8 +15,12 @@ function Tasks() {
   const [form, setForm] = useState({ title: '', description: '', assigned_to: 'Matt', due_date: '' })
 
   const fetchTasks = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/api/tasks`)
-    setTasks(await res.json())
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks`)
+      if (res.ok) setTasks(await res.json())
+    } catch {
+      console.error('Failed to fetch tasks')
+    }
   }, [])
 
   useEffect(() => { fetchTasks() }, [fetchTasks])
